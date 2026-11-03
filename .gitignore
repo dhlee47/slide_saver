@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/
+*.spec
+*.zip
+build.log
+demo_data/
+demo_shots/
+demo_data_shots/
+*.pptx
+*.tif
+*.tiff
+*.vsi
