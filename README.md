@@ -2,11 +2,13 @@
 
 Desktop app (Windows, PySide6) that turns a folder of microscopy channel TIFFs plus a CSV of treatment metadata into a PowerPoint deck, with a graphical choice of slide layout.
 
-Workflow: **1. Folder** (parse `Image_01_.07_488_1x.tif`-style names) → **2. CSV** (one row per VSI; treatment, replicate, per-channel labels, optional pixel size) → **3. Layout** (preset cards or custom rows/columns/slide-per, channel checkboxes, scale bar, downsampling, live preview) → **4. Export** (`.pptx`).
+Workflow: **1. Folder** (parse `Image_01_.07_488_1x.tif`-style names) -> **2. CSV** (one row per VSI; treatment, replicate, per-channel labels, optional pixel size) -> **3. Layout** (preset cards or custom rows/columns/slide-per, channel checkboxes, scale bar, downsampling, live preview) -> **4. Export** (`.pptx`).
 
 See [SPEC.md](SPEC.md) for the full specification (filename rules, CSV format, layout engine, presets).
 
-## Run from source
+## Run
+
+Double-click `run_slidebuilder.bat` (first run creates a local `.venv` and installs packages), or from a terminal:
 
 ```bash
 pip install -r requirements.txt
@@ -45,3 +47,4 @@ tests/               core tests
 ```
 
 Not in v1: reading `.vsi`, image editing, channels beyond 350/488/555/647/merge, representative-image picker.
+

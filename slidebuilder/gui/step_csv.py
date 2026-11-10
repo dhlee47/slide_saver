@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (QCheckBox, QFileDialog, QFormLayout, QGroupBox, Q
                                QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget, QComboBox)
 
 from ..core.csvmap import CsvMapping, apply_csv, auto_map, load_csv, treatments
+from ..core.model import treatment_labels
 from .widgets import DragList
 
 
@@ -29,8 +30,9 @@ class StepCsv(QWidget):
         mid = QHBoxLayout()
         self.map_box = QGroupBox("Column mapping")
         self.form = QFormLayout(self.map_box)
-        self.cb = {k: QComboBox() for k in ("source_id", "treatment", "replicate", "pixel_size")}
-        for k, label in (("source_id", "source_id *"), ("treatment", "treatment *"), ("replicate", "replicate"),
+        self.cb = {k: QComboBox() for k in ("source_id", "treatment", "treatment_label", "replicate", "pixel_size")}
+        for k, label in (("source_id", "source_id *"), ("treatment", "treatment / group *"),
+                         ("treatment_label", "shown on slides"), ("replicate", "replicate"),
                          ("pixel_size", "pixel_size_um")):
             self.form.addRow(label, self.cb[k])
         self.label_cb: dict[str, QComboBox] = {}
@@ -69,7 +71,7 @@ class StepCsv(QWidget):
         self._build_label_rows()
         self.path.setText(s.csv_path if s.table else "")
         if s.table:
-            self._fill_mapping(s.mapping or auto_map(s.table))
+            self._fill_mapping(s.mapping or auto_map(s.table, s.scan.channels_present if s.scan else None))
             self._apply()
         else:
             self.map_box.setEnabled(False)
@@ -93,7 +95,8 @@ class StepCsv(QWidget):
         self.state.csv_path, self.state.table = path, table
         self.path.setText(path)
         self.map_box.setEnabled(True)
-        self._fill_mapping(mapping or auto_map(table))
+        sc = self.state.scan
+        self._fill_mapping(mapping or auto_map(table, sc.channels_present if sc else None))
         self._apply()
 
     def clear(self):
@@ -128,9 +131,10 @@ class StepCsv(QWidget):
                 cb.currentIndexChanged.connect(self._apply); cb._wired = True
         setc(self.cb["source_id"], m.source_id); setc(self.cb["treatment"], m.treatment)
         setc(self.cb["replicate"], m.replicate); setc(self.cb["pixel_size"], m.pixel_size)
+        setc(self.cb["treatment_label"], m.treatment_label)
         for ch, cb in self.label_cb.items():
             setc(cb, m.labels.get(ch))
-        used = {m.source_id, m.treatment, m.replicate, m.pixel_size, *m.labels.values()}
+        used = {m.source_id, m.treatment, m.treatment_label, m.replicate, m.pixel_size, *m.labels.values()}
         self.extras.set_items([(c, c, c in m.extras) for c in cols if c not in used or c in m.extras])
         self._loading = False
 
@@ -138,7 +142,8 @@ class StepCsv(QWidget):
         d = lambda k: self.cb[k].currentData()
         return CsvMapping(source_id=d("source_id"), treatment=d("treatment"), replicate=d("replicate"),
                           labels={ch: cb.currentData() for ch, cb in self.label_cb.items() if cb.currentData()},
-                          pixel_size=d("pixel_size"), extras=self.extras.keys(only_checked=True))
+                          pixel_size=d("pixel_size"), extras=self.extras.keys(only_checked=True),
+                          treatment_label=d("treatment_label"))
 
     def _apply(self, *_):
         s = self.state
@@ -170,4 +175,5 @@ class StepCsv(QWidget):
         cur = treatments(s.scan.samples) if s.scan else []
         order = [t for t in s.treatment_order if t in cur] + [t for t in cur if t not in s.treatment_order]
         s.treatment_order = order
-        self.order.set_items([(t, t, True) for t in order])
+        tl = treatment_labels(s.scan.samples) if s.scan else {}
+        self.order.set_items([(t, t if tl.get(t, t) == t else f"{t}  —  {tl[t]}", True) for t in order])

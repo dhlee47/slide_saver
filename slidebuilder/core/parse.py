@@ -3,10 +3,11 @@ import os
 import re
 from dataclasses import dataclass, field
 from PIL import Image
-from .model import CHANNELS, ImageFile, Sample, assign_rep_n, sample_sort_key
+from .model import MERGE_ALIASES, ImageFile, Sample, assign_rep_n, channel_sort_key, sample_sort_key
 
-DEFAULT_PATTERN = (r"^Image(?:_(?P<id>\d+))?(?:_(?P<section>\d*\.\d+))?"
-                   r"_(?P<channel>350|488|555|647|merge)(?:_1x)?\.tiff?$")
+IMAGE_EXTS = (".tif", ".tiff", ".png", ".jpg", ".jpeg")
+DEFAULT_PATTERN = (r"^Image(?:_(?P<id>\d+))?(?:_(?P<section>\d*\.\d+|\d+x))?"
+                   r"_(?P<channel>350|488|555|647|merge)(?:_1x)?\.(?:tiff?|png|jpe?g)$")
 
 
 @dataclass
@@ -36,14 +37,16 @@ def scan_folder(folder: str, pattern: str | None = None, progress=None) -> ScanR
             res.unparsed.append(name)
             continue
         g = m.groupdict()
-        ch = (g.get("channel") or "").lower()
-        if ch not in CHANNELS:
+        ch = (g.get("channel") or "").strip()
+        if not ch:
             res.unparsed.append(name)
             continue
+        if ch.lower() in MERGE_ALIASES:
+            ch = "merge"
         num = g.get("id")
         unnumbered = num is None
-        n = int(num) if num else 0
-        sid = f"Image_{n:02d}"
+        # no id = index 0; numeric ids become Image_NN; other ids (e.g. "M12") are used as written
+        sid = "Image_00" if unnumbered else f"Image_{int(num):02d}" if num.isdigit() else num
         section = g.get("section") or ""
         try:
             with Image.open(full) as im:
@@ -62,7 +65,7 @@ def scan_folder(folder: str, pattern: str | None = None, progress=None) -> ScanR
     if progress:
         progress(len(names), len(names))
     res.samples = sorted(samples.values(), key=sample_sort_key)
-    res.channels_present = [c for c in CHANNELS if any(c in s.files for s in res.samples)]
+    res.channels_present = sorted({c for s in res.samples for c in s.files}, key=channel_sort_key)
     res.distinct_sizes = sorted({(f.width, f.height) for f in res.files})
     for s in res.samples:
         miss = [c for c in res.channels_present if c not in s.files]

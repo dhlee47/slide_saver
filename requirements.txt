@@ -2,4 +2,3 @@ PySide6
 python-pptx
 Pillow
 numpy
-pytest

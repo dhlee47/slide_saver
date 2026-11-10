@@ -1,5 +1,6 @@
 from __future__ import annotations
 import hashlib
+import textwrap
 import os
 import tempfile
 from PIL import Image, ImageDraw, ImageFont
@@ -24,6 +25,11 @@ def load_rgb(path: str, bg: tuple[int, int, int] = (0, 0, 0)) -> Image.Image:
         base.paste(rgba, mask=rgba.split()[3])
         return base
     return im.convert("RGB")
+
+
+def rotate_cw(im: Image.Image, deg: int) -> Image.Image:
+    T = Image.Transpose
+    return {0: im, 90: im.transpose(T.ROTATE_270), 180: im.transpose(T.ROTATE_180), 270: im.transpose(T.ROTATE_90)}[deg % 360]
 
 
 def get_thumbnail(path: str, max_px: int = 256) -> Image.Image:
@@ -64,7 +70,7 @@ def render_preview(plan: SlidePlan, opts: ExportOptions, width_px: int = 960) ->
     for p in shapes:
         x, y, w, h = p.x * k, p.y * k, p.w * k, p.h * k
         if p.kind == "image":
-            t = get_thumbnail(p.path, max(64, int(max(w, h))))
+            t = rotate_cw(get_thumbnail(p.path, max(64, int(max(w, h)))), p.rotation)
             img.paste(t.resize((max(1, round(w)), max(1, round(h))), Image.BILINEAR), (round(x), round(y)))
         elif p.kind == "bar":
             d.rectangle([x, y, x + w, y + h], fill=hex_to_rgb(p.color))
@@ -72,8 +78,9 @@ def render_preview(plan: SlidePlan, opts: ExportOptions, width_px: int = 960) ->
             f = _font(p.size_pt * k / 72)  # points -> px at this scale (72 pt per inch)
             col = hex_to_rgb(p.color or "#FFFFFF")
             if p.kind in ("header", "bar_label", "missing"):
-                bb = d.textbbox((0, 0), p.text, font=f)
-                d.text((x + (w - (bb[2] - bb[0])) / 2, y + (h - (bb[3] - bb[1])) / 2), p.text, font=f, fill=col)
+                px = max(6.0, p.size_pt * k / 72)
+                txt = "\n".join(textwrap.wrap(p.text, max(4, int(w / (px * 0.52))))) if p.kind != "bar_label" else p.text
+                d.multiline_text((x + w / 2, y + h / 2), txt, font=f, fill=col, anchor="mm", align="center")
             else:
                 d.text((x, y), p.text, font=f, fill=col)
     return img

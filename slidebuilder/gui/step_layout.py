@@ -11,7 +11,7 @@ from ..core.csvmap import treatments
 from ..core.export import estimate
 from ..core.geometry import ScaleBarOptions
 from ..core.layout import LayoutSpec, PRESETS, available_dimensions, plan_slides, preset_spec
-from ..core.model import CHANNELS, DEFAULT_LABELS
+from ..core.model import CHANNELS, DEFAULT_LABELS, treatment_labels
 from ..core.thumbs import render_preview
 from .widgets import ColorButton, DragList, ImageLabel, MultiCombo, PresetCard, pil_to_qimage, run_async
 
@@ -77,6 +77,19 @@ class StepLayout(QWidget):
         f.addRow("Rows", self.cb_rows); f.addRow("Columns", self.cb_cols)
         f.addRow("Flow rows × cols", fl); f.addRow("Flow order", self.cb_order)
         lv.addWidget(box)
+
+        box = QGroupBox("Orientation")
+        f = QFormLayout(box)
+        self.rotation = QComboBox()
+        for lbl, deg in (("None", 0), ("90° clockwise", 90), ("180°", 180), ("270° clockwise", 270)):
+            self.rotation.addItem(lbl, deg)
+        self.transpose = QCheckBox("Swap rows and columns")
+        self.tile_ids = QCheckBox("Show sample ID on each tile")
+        f.addRow("Rotate all images", self.rotation); f.addRow(self.transpose); f.addRow(self.tile_ids)
+        lv.addWidget(box)
+        self.rotation.currentIndexChanged.connect(self._opt_changed)
+        self.transpose.toggled.connect(self._opt_changed)
+        self.tile_ids.toggled.connect(self._opt_changed)
         for w in (self.mode_grid, self.mode_flow):
             w.toggled.connect(self._arr_changed)
         self.slide_per.changed.connect(self._arr_changed)
@@ -184,7 +197,7 @@ class StepLayout(QWidget):
         # channel list
         r = s.restore
         if key != self._scan_id or r:
-            order = [c for c in CHANNELS if c in sc.channels_present]
+            order = list(sc.channels_present)
             sel = (r or {}).get("spec", {}).get("channels") or order
             if r:
                 order = [c for c in sel if c in order] + [c for c in order if c not in sel]
@@ -196,7 +209,8 @@ class StepLayout(QWidget):
         cur = treatments(sc.samples)
         order = [t for t in s.treatment_order if t in cur] + [t for t in cur if t not in s.treatment_order]
         s.treatment_order = order
-        self.treat_list.set_items([(t, t, True) for t in order])
+        tl = treatment_labels(sc.samples)
+        self.treat_list.set_items([(t, t if tl.get(t, t) == t else f"{t}  —  {tl[t]}", True) for t in order])
         if r:  # restore from project
             self._apply_opts(r["opts"])
             s.preset = r["preset"]
@@ -230,6 +244,8 @@ class StepLayout(QWidget):
         for cb, v in ((self.cb_rows, spec.rows), (self.cb_cols, spec.cols), (self.cb_order, spec.flow_order)):
             cb.setCurrentIndex(max(cb.findData(v), 0))
         self.fr.setValue(spec.flow_rows or 0); self.fc.setValue(spec.flow_cols or 0)
+        self.rotation.setCurrentIndex(max(self.rotation.findData(spec.rotation), 0))
+        self.transpose.setChecked(spec.transpose); self.tile_ids.setChecked(spec.tile_ids)
         self._loading = False
         self._show_mode()
 
@@ -239,6 +255,8 @@ class StepLayout(QWidget):
             w.setEnabled(not flow)
         for w in (self.fr, self.fc, self.cb_order):
             w.setEnabled(flow)
+        for w in (self.transpose, self.tile_ids):
+            w.setEnabled(not flow)
 
     def _sync_cards(self):
         for pid, c in self.cards.items():
@@ -271,7 +289,9 @@ class StepLayout(QWidget):
             self.chan_list.item(0).setCheckState(Qt.Checked)
             return
         if self.state.preset != CUSTOM:
+            keep = (self.rotation.currentIndex(), self.transpose.isChecked(), self.tile_ids.isChecked())
             self._fill_arr(self._preset_spec(self.state.preset))
+            self.rotation.setCurrentIndex(keep[0]); self.transpose.setChecked(keep[1]); self.tile_ids.setChecked(keep[2])
         self._read()
         self.timer.start()
 
@@ -309,7 +329,10 @@ class StepLayout(QWidget):
             rows=self.cb_rows.currentData(), cols=self.cb_cols.currentData(),
             flow_rows=self.fr.value() or None, flow_cols=self.fc.value() or None,
             flow_order=self.cb_order.currentData(), filters=dict(s.spec.filters),
-            channels=self._checked_channels(), treatment_order=list(s.treatment_order))
+            channels=self._checked_channels(), treatment_order=list(s.treatment_order),
+            transpose=self.transpose.isChecked() and not self.mode_flow.isChecked(),
+            rotation=self.rotation.currentData() or 0,
+            tile_ids=self.tile_ids.isChecked() and not self.mode_flow.isChecked())
         if s.preset not in (CUSTOM, None) and s.scan:  # presets can override channels (contact sheet)
             spec.channels = self._preset_spec(s.preset).channels
         s.spec = spec

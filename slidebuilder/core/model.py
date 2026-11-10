@@ -3,6 +3,14 @@ import re
 from dataclasses import dataclass, field
 
 CHANNELS = ["350", "488", "555", "647", "merge"]
+MERGE_ALIASES = {"merge", "merged", "overlay", "composite"}
+
+
+def channel_sort_key(ch: str) -> tuple:
+    """Wavelengths ascending, other names alphabetical, merge always last."""
+    return (ch == "merge", 0 if ch.isdigit() else 1, int(ch) if ch.isdigit() else 0, ch.lower())
+
+
 DEFAULT_LABELS = {"350": "DAPI", "488": "488", "555": "555", "647": "647", "merge": "Merge"}
 
 
@@ -52,10 +60,8 @@ def id_number(source_id: str) -> int:
 def section_sort(section: str) -> tuple:
     if not section:
         return (1, 0.0)
-    try:
-        return (0, float(section))
-    except ValueError:
-        return (0, 1e9)
+    m = re.match(r"\d*\.?\d+", section)
+    return (0, float(m.group())) if m else (0, 1e9)
 
 
 def sample_sort_key(s: Sample) -> tuple:
@@ -63,11 +69,19 @@ def sample_sort_key(s: Sample) -> tuple:
 
 
 def assign_rep_n(samples: list[Sample]) -> None:
-    """rep_n = 1-based index of the replicate label within (treatment, section), in sample order."""
-    seen: dict[tuple, list[str]] = {}
+    """rep_n = 1-based position of the sample within its (treatment, section) group, in sample order.
+    Replicates are stacked by position (names are ignored) so groups line up regardless of labels."""
+    count: dict[tuple, int] = {}
     for s in sorted(samples, key=sample_sort_key):
-        reps = seen.setdefault((s.meta["treatment"], s.section), [])
-        rep = s.meta["replicate"]
-        if rep not in reps:
-            reps.append(rep)
-        s.meta["rep_n"] = str(reps.index(rep) + 1)
+        k = (s.meta["treatment"], s.section)
+        count[k] = count.get(k, 0) + 1
+        s.meta["rep_n"] = str(count[k])
+
+
+def treatment_labels(samples: list[Sample]) -> dict[str, str]:
+    """treatment key (e.g. group number) -> text shown on slides (CSV description), falling back to the key."""
+    out: dict[str, str] = {}
+    for s in samples:
+        t = s.meta.get("treatment", "(unassigned)")
+        out.setdefault(t, s.meta.get("treatment_label") or t)
+    return out

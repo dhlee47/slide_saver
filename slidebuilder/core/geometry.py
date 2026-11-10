@@ -57,6 +57,7 @@ class Placed:
     path: str = ""
     color: str = ""
     size_pt: int = 0
+    rotation: int = 0  # images: clockwise degrees applied to the file
 
 
 def hex_to_rgb(h: str) -> tuple[int, int, int]:
@@ -91,21 +92,31 @@ def layout_slide(plan: SlidePlan, opts: ExportOptions) -> tuple[float, float, li
     out: list[Placed] = []
     if plan.title:
         out.append(Placed("title", 0.15, 0.03, sw - 0.3, TITLE_H - 0.05, plan.title, color=fg, size_pt=opts.title_pt))
-    rhw = ROW_HEADER_W if plan.row_headers else 0.0
-    chh = COL_HEADER_H if plan.col_headers else 0.0
-    x0, y0 = MARGIN + rhw, TITLE_H + chh
-    aw, ah = sw - x0 - MARGIN, sh - y0 - MARGIN
-    g = opts.gap_in
-    cw = (aw - g * (plan.n_cols - 1)) / plan.n_cols
+    chw = 0.55 * opts.label_pt / 72  # approximate character width (in)
+    longest_row = max((len(t) for t in plan.row_headers), default=0)
+    rhw = (ROW_HEADER_W if longest_row * chw <= ROW_HEADER_W - 0.15 else 1.9) if plan.row_headers else 0.0
+    x0 = MARGIN + rhw
+    aw = sw - x0 - MARGIN
+    gp = opts.gap_in
+    cw = (aw - gp * (plan.n_cols - 1)) / plan.n_cols
+    lines = max((math.ceil(len(t) * chw / max(cw - 0.1, 0.3)) for t in plan.col_headers), default=1)
+    chh = min(COL_HEADER_H + 0.2 * (lines - 1), 1.3) if plan.col_headers else 0.0
+    y0 = TITLE_H + chh
+    ah = sh - y0 - MARGIN
+    g = gp
     chgt = (ah - g * (plan.n_rows - 1)) / plan.n_rows
     for i, t in enumerate(plan.row_headers):
         out.append(Placed("header", MARGIN, y0 + i * (chgt + g), rhw - 0.05, chgt, t, color=fg, size_pt=opts.label_pt))
     for j, t in enumerate(plan.col_headers):
         out.append(Placed("header", x0 + j * (cw + g), TITLE_H, cw, chh, t, color=fg, size_pt=opts.label_pt))
 
-    def dims(c):
+    rot = plan.rotation % 360
+
+    def dims(c):  # displayed pixel size (after rotation)
         f = c.sample.files.get(c.channel) if c.sample else None
-        return (f.width, f.height) if f and f.width and f.height else None
+        if not (f and f.width and f.height):
+            return None
+        return (f.height, f.width) if rot in (90, 270) else (f.width, f.height)
 
     fits = {id(c): (min(cw / d[0], chgt / d[1]) if (d := dims(c)) else None) for c in plan.cells}
     common = min((v for v in fits.values() if v), default=None) if opts.match_size_within_slide else None
@@ -119,7 +130,7 @@ def layout_slide(plan: SlidePlan, opts: ExportOptions) -> tuple[float, float, li
         scale = common or fits[id(c)]
         w, h = d[0] * scale, d[1] * scale
         ix, iy = cx + (cw - w) / 2, cy + (chgt - h) / 2
-        out.append(Placed("image", ix, iy, w, h, path=c.sample.files[c.channel].path))
+        out.append(Placed("image", ix, iy, w, h, path=c.sample.files[c.channel].path, rotation=rot))
         if c.label:
             out.append(Placed("label", ix + 0.04, iy + 0.02, max(0.5, w - 0.08), 0.28, c.label,
                               color=opts.channel_colors.get(c.channel, DEFAULT_TAG_COLOR), size_pt=opts.label_pt))

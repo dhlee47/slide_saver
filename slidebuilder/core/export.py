@@ -8,7 +8,7 @@ from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
 from .geometry import ExportOptions, hex_to_rgb, layout_slide
 from .layout import SlidePlan
-from .thumbs import load_rgb
+from .thumbs import load_rgb, rotate_cw
 
 CENTERED = ("header", "bar_label", "missing")
 
@@ -55,7 +55,7 @@ def export_pptx(plans: list[SlidePlan], opts: ExportOptions, out_path: str, prog
         for p in shapes:
             if p.kind == "image":
                 try:
-                    im = load_rgb(p.path, bg)
+                    im = rotate_cw(load_rgb(p.path, bg), p.rotation)
                     im.thumbnail((opts.max_px, opts.max_px))
                     buf = io.BytesIO()
                     im.save(buf, "JPEG", quality=opts.jpeg_quality)

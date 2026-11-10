@@ -166,3 +166,19 @@ def estimate(plans:list[SlidePlan], opts:ExportOptions) -> tuple[int,float]   # 
 def export_pptx(plans, opts, out_path:str, progress=None, cancel=None) -> list[str]   # progress(done,total); cancel()->bool; returns warnings
 ```
 `progress` callbacks are `Callable[[int,int],None]`.
+
+## 10. Revision: replicate stacking, orientation, rotation
+
+- **Replicates are stacked by position, not matched by name.** `rep_n` = 1-based position of a sample within its (treatment, section) group, in sample order. The `replicate` dimension is an alias for `rep_n` in layouts (headers read "Rep 1", "Rep 2", ...). The CSV `replicate` column is kept as metadata only. So 4 replicates of group 1 line up with 4 of group 2 whatever they are called.
+- **Alignment is global.** Row/column keys of an axis come from all samples, not just those on the current slide. A group with fewer replicates leaves its spare spots blank, and every slide has as many replicate columns (rows) as the largest group.
+- **Orientation.** `LayoutSpec.transpose` swaps rows and columns of any grid layout (GUI: "Swap rows and columns"), e.g. treatments as rows or columns in "treatments x replicates", channels as rows or columns in "channels x treatments".
+- **Rotation.** `LayoutSpec.rotation` (0/90/180/270, clockwise) rotates every image, in the preview and the exported file. Presets carry a default (Channel strip = 90, others = 0); the user can change it. Scale bars stay correct (computed from the displayed horizontal pixel count).
+- **Tile IDs.** `LayoutSpec.tile_ids` prints the sample id (e.g. "Image_01 .07") on each grid tile so stacked replicates stay traceable to files.
+
+## 11. Revision: user-taught naming scheme, data-driven channels, group labels
+
+- **Naming scheme by highlighting.** Step 1 has a "Teach the app your naming scheme" panel: pick an example file, highlight parts of its name and tag them as ID, section/magnification, or channel. `core/naming.build_pattern` turns the tags into a regex (ID and section are optional together with their leading separator; everything untagged is literal; `.tif`/`.tiff` both match). The panel opens automatically when many .tif files are not recognised; the regex stays visible and editable.
+- **Channels come from the data.** Any channel string captured by the pattern is accepted (wavelengths, `DAPI`, `Cy5`, ...). Order: wavelengths ascending, other names alphabetical, merge last. `merge`, `merged`, `overlay`, `composite` are all treated as the merge image.
+- **IDs.** Numeric ids become `Image_NN`; no id = `Image_00`; other ids (e.g. `M12`) are used as written and must match the CSV exactly.
+- **Group vs. label.** The CSV "treatment / group" column (e.g. `Group ID`) decides organisation and ordering; an optional "shown on slides" column (e.g. `Description`, first value per group) is what slide titles and row/column headers display. Headers wrap and the header strips grow for long text.
+- CSV auto-mapping also recognises `Slide ID`, `Group ID`, `Sample ID`, `Description`, `Stain` ("marker (555)" cells set that channel's label), and hyphenated ids (`Image-01`).
